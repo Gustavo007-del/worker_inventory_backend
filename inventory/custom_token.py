@@ -9,6 +9,7 @@ class CustomTokenSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token['is_staff'] = user.is_staff
         token['username'] = user.username
+        token['user_id'] = user.id
         return token
 
     def validate(self, attrs):
@@ -17,6 +18,7 @@ class CustomTokenSerializer(TokenObtainPairSerializer):
         # ADD EXTRA FIELDS TO RESPONSE BODY
         data['is_staff'] = self.user.is_staff
         data['username'] = self.user.username
+        data['user_id'] = self.user.id
 
         return data
 
