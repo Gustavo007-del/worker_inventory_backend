@@ -1,3 +1,4 @@
+# E:\study\worker_inventory\worker_inventory_backend\inventory\custom_token.py
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 

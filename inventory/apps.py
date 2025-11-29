@@ -1,3 +1,4 @@
+# E:\study\worker_inventory\worker_inventory_backend\inventory\apps.py
 from django.apps import AppConfig
 
 

@@ -1,3 +1,4 @@
+# E:\study\worker_inventory\worker_inventory_backend\backend\asgi.py
 """
 ASGI config for backend project.
 

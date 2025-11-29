@@ -1,3 +1,4 @@
+# E:\study\worker_inventory\worker_inventory_backend\backend\settings.py
 """
 Django settings for backend project.
 
@@ -11,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -63,8 +65,16 @@ REST_FRAMEWORK = {
     )
 }
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.environ.get('dwfm7p4kf'),
+    'API_KEY': os.environ.get('424969935353117'),
+    'API_SECRET': os.environ.get('KsgTUY9kAYT79EGazvOstzMiYek'),
+}
+# MEDIA_URL = '/media/'
+# MEDIA_ROOT = BASE_DIR / 'media'
 
 
 ROOT_URLCONF = 'backend.urls'
