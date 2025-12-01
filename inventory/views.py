@@ -7,6 +7,8 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import datetime
 import json
+from django.db.models import F
+
 
 from .models import InventoryItem, AssignedItem, UsageLog, CourierShipment, CourierItem, WorkerLocation
 from .serializers import (
@@ -14,6 +16,12 @@ from .serializers import (
     CourierShipmentSerializer, CourierItemSerializer, WorkerLocationSerializer,
     MemberDetailSerializer
 )
+import uuid
+import os
+
+def unique_filename(filename):
+    base, ext = os.path.splitext(filename)
+    return f"{uuid.uuid4().hex}{ext or '.jpg'}"
 
 
 # ==================== STOCK MANAGEMENT ====================
@@ -106,24 +114,58 @@ class MemberDetailView(APIView):
             return Response({"error": "Member not found"}, status=404)
 
     def put(self, request, member_id):
-        """Admin: Update member assignment"""
+        """Admin: Update member assignment AND sync stock"""
         try:
             member = User.objects.get(id=member_id, is_staff=False)
-            item_id = request.data.get('item_id')
-            quantity = request.data.get('quantity')
-            
-            if not item_id or quantity is None:
-                return Response({"error": "item_id and quantity required"}, status=400)
-            
-            item = InventoryItem.objects.get(id=item_id)
-            assigned, created = AssignedItem.objects.get_or_create(worker=member, item=item)
-            assigned.assigned_quantity = int(quantity)
-            assigned.save()
-            
-            return Response(AssignedItemSerializer(assigned).data)
-        except (User.DoesNotExist, InventoryItem.DoesNotExist):
-            return Response({"error": "Member or Item not found"}, status=404)
+        except User.DoesNotExist:
+            return Response({"error": "Member not found"}, status=404)
 
+        item_id = request.data.get('item_id')
+        quantity = request.data.get('quantity')
+
+        if not item_id or quantity is None:
+            return Response({"error": "item_id and quantity required"}, status=400)
+
+        try:
+            item = InventoryItem.objects.get(id=item_id)
+        except InventoryItem.DoesNotExist:
+            return Response({"error": "Item not found"}, status=404)
+
+        try:
+            new_qty = int(quantity)
+        except ValueError:
+            return Response({"error": "quantity must be integer"}, status=400)
+
+        assigned, created = AssignedItem.objects.get_or_create(worker=member, item=item)
+        old_qty = assigned.assigned_quantity
+
+        diff = new_qty - old_qty  # +ve: give more to worker, -ve: take back
+        print(f"[MemberDetailView] worker={member.username} item={item.name} old={old_qty} new={new_qty} diff={diff}")
+
+        if diff > 0:
+            # Need to move more from stock to worker
+            if item.total_quantity < diff:
+                return Response(
+                    {"error": f"Not enough stock. Available={item.total_quantity}, extra_required={diff}"},
+                    status=400
+                )
+            item.total_quantity = F('total_quantity') - diff
+            item.save(update_fields=['total_quantity'])
+        elif diff < 0:
+            # Returning to stock
+            item.total_quantity = F('total_quantity') + abs(diff)
+            item.save(update_fields=['total_quantity'])
+
+        assigned.assigned_quantity = new_qty
+        assigned.save(update_fields=['assigned_quantity'])
+
+        # Refresh from DB to show updated numbers
+        item.refresh_from_db()
+        assigned.refresh_from_db()
+
+        print(f"[MemberDetailView] Updated assigned={assigned.assigned_quantity}, stock={item.total_quantity}")
+
+        return Response(AssignedItemSerializer(assigned).data)
 
 # ==================== MEMBER PROFILE ====================
 
@@ -163,16 +205,28 @@ class SubmitUsageView(APIView):
         if not item_id or not quantity_used or not photo:
             return Response({"error": "Missing required fields"}, status=400)
 
-        item = InventoryItem.objects.get(id=item_id)
+        try:
+            item = InventoryItem.objects.get(id=item_id)
+        except InventoryItem.DoesNotExist:
+            return Response({"error": "Item not found"}, status=404)
+
+        try:
+            qty_int = int(quantity_used)
+        except ValueError:
+            return Response({"error": "quantity_used must be integer"}, status=400)
+
+        original_name = photo.name
+        photo.name = unique_filename(photo.name)
+        print(f"[SubmitUsageView] worker={worker.username} item={item.name} qty={qty_int} file={original_name} -> {photo.name}")
 
         log = UsageLog.objects.create(
             worker=worker,
             item=item,
-            quantity_used=quantity_used,
+            quantity_used=qty_int,
             photo=photo
         )
 
-        return Response({"message": "Submitted, waiting for approval"})
+        return Response({"message": "Submitted, waiting for approval", "id": log.id}, status=201)
 
 
 # ==================== USAGE APPROVALS (EXISTING) ====================
@@ -308,14 +362,22 @@ class ReceiveCourierView(APIView):
         if not received_quantity or not received_photo:
             return Response({"error": "received_quantity and received_photo required"}, status=400)
 
+        try:
+            qty_int = int(received_quantity)
+        except ValueError:
+            return Response({"error": "received_quantity must be integer"}, status=400)
+
+        original_name = received_photo.name
+        received_photo.name = unique_filename(received_photo.name)
+        print(f"[ReceiveCourierView] shipment={shipment.id} worker={shipment.worker.username} qty={qty_int} file={original_name} -> {received_photo.name}")
+
         shipment.status = 'received'
         shipment.received_at = timezone.now()
-        shipment.received_quantity = int(received_quantity)
+        shipment.received_quantity = qty_int
         shipment.received_photo = received_photo
         shipment.save()
 
         return Response(CourierShipmentSerializer(shipment).data)
-
 
 class AdminCourierApprovalsView(APIView):
     """Admin: Approve received couriers"""
@@ -399,7 +461,7 @@ class WorkerLocationsView(APIView):
         locations = []
         
         for worker in workers:
-            last_location = WorkerLocation.objects.filter(worker=worker).first()
+            last_location = WorkerLocation.objects.filter(worker=worker).order_by('-timestamp').first()
             if last_location:
                 locations.append({
                     'worker_id': worker.id,

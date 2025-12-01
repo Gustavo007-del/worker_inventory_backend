@@ -76,7 +76,7 @@ class MemberDetailSerializer(serializers.ModelSerializer):
         return AssignedItemSerializer(items, many=True).data
 
     def get_last_location(self, obj):
-        location = WorkerLocation.objects.filter(worker=obj).first()
+        location = WorkerLocation.objects.filter(worker=obj).order_by('-timestamp').first()
         if location:
             return WorkerLocationSerializer(location).data
         return None
