@@ -12,6 +12,18 @@ from .serializers import (
     InventoryItemSerializer, AssignedItemSerializer,
     UsageLogSerializer, MemberDetailSerializer
 )
+# ==========================================
+#        SIMPLE ASSIGNED ITEMS (Member)
+# ==========================================
+
+class AssignedItemsSimpleView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        worker = request.user
+        items = AssignedItem.objects.filter(worker=worker)
+        serializer = AssignedItemSerializer(items, many=True)
+        return Response(serializer.data)
 
 # ---------- UTILITY ----------
 def unique_filename(filename):
