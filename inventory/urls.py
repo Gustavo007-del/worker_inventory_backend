@@ -3,7 +3,7 @@ from django.urls import path
 from .views import (
     StockListView, StockDetailView,
     MembersListView, MemberDetailView, AssignItemView,
-    AssignedItemsView,
+    AssignedItemsSimpleView,
     SubmitUsageView, PendingUsageView, ApproveUsageView, UsageHistoryView
 )
 
@@ -20,7 +20,7 @@ urlpatterns = [
     path('assign/', AssignItemView.as_view(), name='assign_item'),
 
     # Member screens
-    path('assigned-items/', AssignedItemsView.as_view()),
+    path('assigned-items/', AssignedItemsSimpleView.as_view()),
     path('submit-usage/', SubmitUsageView.as_view()),
     path('pending-usage/', PendingUsageView.as_view()),
     path('approve-usage/<int:log_id>/', ApproveUsageView.as_view()),
