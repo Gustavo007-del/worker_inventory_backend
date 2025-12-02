@@ -400,3 +400,149 @@ class WorkerLocationsView(APIView):
                 })
 
         return Response(output)
+    
+
+# ==================== COURIER OPERATIONS ====================
+
+class CreateCourierView(APIView):
+    """Admin: Create courier shipment"""
+    permission_classes = [IsAdminUser]
+
+    def post(self, request):
+        worker_ids = request.data.get('worker_ids', [])
+        items_data = request.data.get('items', [])
+
+        if not worker_ids or not items_data:
+            return Response({"error": "worker_ids and items required"}, status=400)
+
+        shipments = []
+        for worker_id in worker_ids:
+            try:
+                worker = User.objects.get(id=worker_id, is_staff=False)
+            except User.DoesNotExist:
+                continue
+
+            shipment = CourierShipment.objects.create(worker=worker, status='pending')
+
+            for item_data in items_data:
+                try:
+                    item = InventoryItem.objects.get(id=item_data['item_id'])
+                except InventoryItem.DoesNotExist:
+                    continue
+
+                CourierItem.objects.create(
+                    shipment=shipment,
+                    item=item,
+                    quantity=item_data['quantity']
+                )
+
+            shipments.append(shipment)
+
+        return Response(CourierShipmentSerializer(shipments, many=True).data, status=201)
+
+
+class SendCourierView(APIView):
+    """Admin: Send courier shipment"""
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, shipment_id):
+        try:
+            shipment = CourierShipment.objects.get(id=shipment_id)
+        except CourierShipment.DoesNotExist:
+            return Response({"error": "Shipment not found"}, status=404)
+
+        shipment.status = 'sent'
+        shipment.sent_at = timezone.now()
+        shipment.save()
+
+        return Response(CourierShipmentSerializer(shipment).data)
+
+
+class WorkerCourierView(APIView):
+    """Worker: Get received couriers (sent or received or approved)"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        shipments = CourierShipment.objects.filter(worker=request.user).exclude(status='pending')
+        return Response(CourierShipmentSerializer(shipments, many=True).data)
+
+
+class ReceiveCourierView(APIView):
+    """Worker: Receive courier and upload photo"""
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, shipment_id):
+        try:
+            shipment = CourierShipment.objects.get(id=shipment_id, worker=request.user)
+        except CourierShipment.DoesNotExist:
+            return Response({"error": "Shipment not found"}, status=404)
+
+        qty = request.data.get('received_quantity')
+        photo = request.FILES.get('received_photo')
+
+        if not qty or not photo:
+            return Response({"error": "received_quantity and received_photo required"}, status=400)
+
+        try:
+            qty = int(qty)
+        except ValueError:
+            return Response({"error": "received_quantity must be integer"}, status=400)
+
+        original = photo.name
+        photo.name = unique_filename(photo.name)
+        print(f"[ReceiveCourierView] rename {original} -> {photo.name}")
+
+        shipment.status = 'received'
+        shipment.received_at = timezone.now()
+        shipment.received_quantity = qty
+        shipment.received_photo = photo
+        shipment.save()
+
+        return Response(CourierShipmentSerializer(shipment).data)
+
+
+class AdminCourierApprovalsView(APIView):
+    """Admin: Approve received courier shipments"""
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        shipments = CourierShipment.objects.filter(status='received')
+        return Response(CourierShipmentSerializer(shipments, many=True).data)
+
+    def post(self, request, shipment_id):
+        try:
+            shipment = CourierShipment.objects.get(id=shipment_id, status='received')
+        except CourierShipment.DoesNotExist:
+            return Response({"error": "Shipment not found"}, status=404)
+
+        shipment.status = 'approved'
+        shipment.approved_at = timezone.now()
+        shipment.save()
+
+        for ci in shipment.items.all():
+            assigned, _ = AssignedItem.objects.get_or_create(worker=shipment.worker, item=ci.item)
+            assigned.assigned_quantity += ci.quantity
+            assigned.save()
+
+            ci.item.total_quantity -= ci.quantity
+            ci.item.save()
+
+        return Response(CourierShipmentSerializer(shipment).data)
+
+
+class RejectCourierView(APIView):
+    """Admin: Reject courier shipment"""
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, shipment_id):
+        try:
+            shipment = CourierShipment.objects.get(id=shipment_id, status='received')
+        except CourierShipment.DoesNotExist:
+            return Response({"error": "Shipment not found"}, status=404)
+
+        shipment.status = 'rejected'
+        shipment.save()
+
+        return Response(CourierShipmentSerializer(shipment).data)
+
