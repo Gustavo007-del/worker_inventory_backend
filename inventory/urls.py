@@ -2,7 +2,7 @@
 from django.urls import path
 from .views import (
     # Stock Management
-    StockListView, StockDetailView, SearchStockView,
+    StockListView, StockDetailView, 
     # Member Management
     MembersListView, MemberDetailView, MemberProfileView,
     # Assigned Items
@@ -22,7 +22,7 @@ urlpatterns = [
     path('stock/create/', StockDetailView.as_view(), name='stock_create'),
     path('stock/<int:item_id>/update/', StockDetailView.as_view(), name='stock_update'),
     path('stock/<int:item_id>/delete/', StockDetailView.as_view(), name='stock_delete'),
-    path('stock/search/', SearchStockView.as_view(), name='stock_search'),
+    # path('stock/search/', SearchStockView.as_view(), name='stock_search'),
 
     # ========== MEMBERS ==========
     path('members/', MembersListView.as_view(), name='members_list'),
