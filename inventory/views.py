@@ -208,21 +208,42 @@ class ApproveUsageView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request, log_id):
+        print(f"[ApproveUsage] Approving log_id={log_id}")  # LOG
+
         try:
             log = UsageLog.objects.get(id=log_id)
         except UsageLog.DoesNotExist:
+            print("[ApproveUsage] ❌ Log not found")  # LOG
             return Response({"error": "Log not found"}, status=404)
 
-        # approve
+        # Mark as approved
         log.is_approved = True
         log.save()
+        print(f"[ApproveUsage] ✔ Marked approved for worker={log.worker.username}, item={log.item.name}")  # LOG
 
-        # deduct from assignment
+        # Decrease assigned quantity
         assigned = AssignedItem.objects.get(worker=log.worker, item=log.item)
-        assigned.assigned_quantity = F("assigned_quantity") - int(log.quantity_used)
+        old_assigned = assigned.assigned_quantity
+        assigned.assigned_quantity -= int(log.quantity_used)
         assigned.save()
 
-        return Response({"message": "Usage approved"})
+        print(f"[ApproveUsage] 🔽 Assigned qty: {old_assigned} -> {assigned.assigned_quantity}")  # LOG
+
+        # Decrease from main stock
+        item = log.item
+        old_stock = item.total_quantity
+        item.total_quantity -= int(log.quantity_used)
+        item.save()
+
+        print(f"[ApproveUsage] 🏭 Stock qty: {old_stock} -> {item.total_quantity}")  # LOG
+
+        return Response({
+            "message": "Approved & Quantity Updated",
+            "assigned_before": old_assigned,
+            "assigned_after": assigned.assigned_quantity,
+            "stock_before": old_stock,
+            "stock_after": item.total_quantity,
+        })
 
 
 # ==================== USAGE HISTORY ====================
