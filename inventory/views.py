@@ -254,42 +254,62 @@ class ApproveUsageView(APIView):
         except UsageLog.DoesNotExist:
             return Response({"error": "Log not found"}, status=404)
 
-        print(f"[ApproveUsage] Approving log #{log_id} worker={log.worker.username} item={log.item.name} qty={log.quantity_used}")
+        worker = log.worker
+        item = log.item
+        used = int(log.quantity_used)
 
-        # Mark as approved
-        log.is_approved = True
-        log.save(update_fields=["is_approved"])
-
-        # Update assigned quantity
+        # 1. Get assigned item
         try:
-            assigned = AssignedItem.objects.get(worker=log.worker, item=log.item)
+            assigned = AssignedItem.objects.get(worker=worker, item=item)
         except AssignedItem.DoesNotExist:
             return Response({"error": "Assigned record not found"}, status=404)
 
-        old_assigned = assigned.assigned_quantity
-        new_assigned = old_assigned - int(log.quantity_used)
+        assigned_before = assigned.assigned_quantity
+        stock_before = item.total_quantity
 
-        print(f"[ApproveUsage] Assigned before={old_assigned}, after={new_assigned}")
+        # 2. Prevent negative assigned values
+        if used > assigned_before:
+            return Response({
+                "error": "Used quantity cannot exceed assigned quantity",
+                "assigned": assigned_before,
+                "used": used
+            }, status=400)
 
-        assigned.assigned_quantity = new_assigned
+        # 3. Prevent negative stock
+        if used > stock_before:
+            return Response({
+                "error": "Stock quantity too low",
+                "stock": stock_before,
+                "used": used
+            }, status=400)
+
+        # 4. Approve log
+        log.is_approved = True
+        log.save(update_fields=["is_approved"])
+
+        # 5. Update assigned quantity
+        assigned_after = assigned_before - used
+        assigned.assigned_quantity = assigned_after
         assigned.save(update_fields=["assigned_quantity"])
 
-        # Decrease main stock
-        item = log.item
-        old_stock = item.total_quantity
-        new_stock = old_stock - int(log.quantity_used)
-
-        print(f"[ApproveUsage] Stock before={old_stock}, after={new_stock}")
-
-        item.total_quantity = new_stock
+        # 6. Update stock quantity
+        stock_after = stock_before - used
+        item.total_quantity = stock_after
         item.save(update_fields=["total_quantity"])
 
-        return Response({
-            "message": "Approved & Stock Updated",
-            "assigned_after": new_assigned,
-            "stock_after": new_stock
-        })
+        print("\n=== APPROVE USAGE ===")
+        print(f"Worker: {worker.username}")
+        print(f"Item: {item.name}")
+        print(f"Used: {used}")
+        print(f"Assigned: {assigned_before} -> {assigned_after}")
+        print(f"Stock: {stock_before} -> {stock_after}")
+        print("=====================\n")
 
+        return Response({
+            "message": "Approved successfully",
+            "assigned_after": assigned_after,
+            "stock_after": stock_after
+        })
 
 class UsageHistoryView(APIView):
     permission_classes = [IsAuthenticated]
