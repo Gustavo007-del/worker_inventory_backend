@@ -74,3 +74,20 @@ class WorkerLocation(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+
+
+class Attendance(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    date = models.DateField(auto_now_add=True)
+
+    check_in = models.DateTimeField(null=True, blank=True)
+    check_out = models.DateTimeField(null=True, blank=True)
+
+    check_in_lat = models.FloatField(null=True, blank=True)
+    check_in_lng = models.FloatField(null=True, blank=True)
+
+    check_out_lat = models.FloatField(null=True, blank=True)
+    check_out_lng = models.FloatField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.date}"

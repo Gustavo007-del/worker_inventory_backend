@@ -25,4 +25,8 @@ urlpatterns = [
     path('pending-usage/', PendingUsageView.as_view()),
     path('approve-usage/<int:log_id>/', ApproveUsageView.as_view()),
     path('history/', UsageHistoryView.as_view()),
+
+    path("attendance/check-in/", views.check_in),
+    path("attendance/check-out/", views.check_out),
+    path("attendance/today/", views.today_attendance),
 ]

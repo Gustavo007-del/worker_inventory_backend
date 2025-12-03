@@ -5,13 +5,93 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth.models import User
 from django.db import transaction
-import uuid, os
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+import uuid, os, json
 
-from .models import InventoryItem, AssignedItem, UsageLog
+from .models import InventoryItem, AssignedItem, UsageLog, Attendance
 from .serializers import (
     InventoryItemSerializer, AssignedItemSerializer,
     UsageLogSerializer, MemberDetailSerializer
 )
+
+
+@csrf_exempt
+def check_in(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=400)
+
+    data = json.loads(request.body.decode("utf-8"))
+
+    username = data.get("username")
+    lat = data.get("lat")
+    lng = data.get("lng")
+
+    user = User.objects.get(username=username)
+    today = timezone.now().date()
+
+    attendance, created = Attendance.objects.get_or_create(user=user, date=today)
+
+    if attendance.check_in:
+        return JsonResponse({"error": "Already checked in"}, status=400)
+
+    attendance.check_in = timezone.now()
+    attendance.check_in_lat = lat
+    attendance.check_in_lng = lng
+    attendance.save()
+
+    return JsonResponse({"message": "Check-in successful"})
+
+
+@csrf_exempt
+def check_out(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=400)
+
+    data = json.loads(request.body.decode("utf-8"))
+
+    username = data.get("username")
+    lat = data.get("lat")
+    lng = data.get("lng")
+
+    user = User.objects.get(username=username)
+    today = timezone.now().date()
+
+    try:
+        attendance = Attendance.objects.get(user=user, date=today)
+    except Attendance.DoesNotExist:
+        return JsonResponse({"error": "Not checked in today"}, status=400)
+
+    if attendance.check_out:
+        return JsonResponse({"error": "Already checked out"}, status=400)
+
+    attendance.check_out = timezone.now()
+    attendance.check_out_lat = lat
+    attendance.check_out_lng = lng
+    attendance.save()
+
+    return JsonResponse({"message": "Check-out successful"})
+
+
+def today_attendance(request):
+    username = request.GET.get("username")
+    user = User.objects.get(username=username)
+    today = timezone.now().date()
+
+    try:
+        att = Attendance.objects.get(user=user, date=today)
+        return JsonResponse({
+            "check_in": att.check_in,
+            "check_in_lat": att.check_in_lat,
+            "check_in_lng": att.check_in_lng,
+            "check_out": att.check_out,
+            "check_out_lat": att.check_out_lat,
+            "check_out_lng": att.check_out_lng,
+        })
+    except Attendance.DoesNotExist:
+        return JsonResponse({"check_in": None, "check_out": None})
+
 # ==========================================
 #        SIMPLE ASSIGNED ITEMS (Member)
 # ==========================================
@@ -84,7 +164,7 @@ class MembersListView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        members = User.objects.filter(is_staff=False)
+        members = User.objects.all().order_by('username')
         return Response(MemberDetailSerializer(members, many=True).data)
 
 # nw
