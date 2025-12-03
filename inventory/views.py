@@ -17,7 +17,6 @@ from .serializers import (
 )
 
 
-@csrf_exempt
 def check_in(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=400)
@@ -44,7 +43,6 @@ def check_in(request):
     return JsonResponse({"message": "Check-in successful"})
 
 
-@csrf_exempt
 def check_out(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=400)
