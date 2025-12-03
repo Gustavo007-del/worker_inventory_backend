@@ -17,11 +17,15 @@ from .serializers import (
 )
 
 
+@csrf_exempt
 def check_in(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=400)
 
-    data = json.loads(request.body.decode("utf-8"))
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     username = data.get("username")
     lat = data.get("lat")
@@ -43,11 +47,15 @@ def check_in(request):
     return JsonResponse({"message": "Check-in successful"})
 
 
+@csrf_exempt
 def check_out(request):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=400)
 
-    data = json.loads(request.body.decode("utf-8"))
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     username = data.get("username")
     lat = data.get("lat")
@@ -72,9 +80,17 @@ def check_out(request):
     return JsonResponse({"message": "Check-out successful"})
 
 
+@csrf_exempt
 def today_attendance(request):
     username = request.GET.get("username")
-    user = User.objects.get(username=username)
+    if not username:
+        return JsonResponse({"error": "Username is required"}, status=400)
+        
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        return JsonResponse({"error": "User not found"}, status=404)
+        
     today = timezone.now().date()
 
     try:
