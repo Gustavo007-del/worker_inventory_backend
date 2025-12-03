@@ -31,7 +31,14 @@ def check_in(request):
     lat = data.get("lat")
     lng = data.get("lng")
 
-    user = User.objects.get(username=username)
+    if not username:
+        return JsonResponse({"error": "Username required"}, status=400)
+
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        return JsonResponse({"error": "User not found"}, status=404)
+
     today = timezone.now().date()
 
     attendance, created = Attendance.objects.get_or_create(user=user, date=today)
@@ -61,7 +68,14 @@ def check_out(request):
     lat = data.get("lat")
     lng = data.get("lng")
 
-    user = User.objects.get(username=username)
+    if not username:
+        return JsonResponse({"error": "Username required"}, status=400)
+
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        return JsonResponse({"error": "User not found"}, status=404)
+
     today = timezone.now().date()
 
     try:
@@ -96,10 +110,10 @@ def today_attendance(request):
     try:
         att = Attendance.objects.get(user=user, date=today)
         return JsonResponse({
-            "check_in": att.check_in,
+            "check_in": att.check_in.isoformat() if att.check_in else None,  # Convert to string
             "check_in_lat": att.check_in_lat,
             "check_in_lng": att.check_in_lng,
-            "check_out": att.check_out,
+            "check_out": att.check_out.isoformat() if att.check_out else None,  # Convert to string
             "check_out_lat": att.check_out_lat,
             "check_out_lng": att.check_out_lng,
         })
@@ -181,7 +195,7 @@ class MembersListView(APIView):
         members = User.objects.all().order_by('username')
         return Response(MemberDetailSerializer(members, many=True).data)
 
-# nw
+
 class MemberDetailView(APIView):
     """Admin: Get / Assign items to member (simple version)"""
     permission_classes = [IsAdminUser]
@@ -247,6 +261,7 @@ class MemberDetailView(APIView):
         })
 
 
+# REMOVED DUPLICATE - Keep only this one
 class AssignItemView(APIView):
     """Admin assigns items to a member"""
     permission_classes = [IsAdminUser]
@@ -274,30 +289,7 @@ class AssignItemView(APIView):
 
 # ==========================================
 #               MEMBER SCREENS
-# ==========================================nw
-
-class AssignItemView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def post(self, request):
-        member_id = request.data.get("member_id")
-        item_id = request.data.get("item_id")
-        qty = request.data.get("quantity")
-
-        # simple logic
-        try:
-            member = User.objects.get(id=member_id, is_staff=False)
-            item = InventoryItem.objects.get(id=item_id)
-        except:
-            return Response({"error": "Invalid member or item"}, status=400)
-
-        assigned, created = AssignedItem.objects.get_or_create(worker=member, item=item)
-        assigned.assigned_quantity = qty
-        assigned.save()
-
-        return Response({"message": "Assigned"})
-
-
+# ==========================================
 
 class SubmitUsageView(APIView):
     permission_classes = [IsAuthenticated]
@@ -404,6 +396,7 @@ class ApproveUsageView(APIView):
             "assigned_after": assigned_after,
             "stock_after": stock_after
         })
+
 
 class UsageHistoryView(APIView):
     permission_classes = [IsAuthenticated]
